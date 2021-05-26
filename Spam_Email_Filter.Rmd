@@ -1,0 +1,100 @@
+---
+title: "Creating a Spam Email Filter With Classification Models"
+author: "Benjamin Slates"
+date: "2/21/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+The aim of this project is to create a spam email filter that can accurately predict whether an incoming email is spam or not. To do this I'll be working with the 'Spam' data set which is composed of 4600 emails with 1800 being spam. The remaining variables are binary for whether a certain character, phrase, or length range was present or not. To develop the spam filter I'll be training different types of classification models to find the model and method that most accurately predicts if an email is spam or not.
+
+I'll start by calling all of the packages I'll need to be using and loading in the spam data set.
+ 
+```{r}
+library(caret)
+library(randomForest)
+library(ISLR)
+library(rpart)
+spam <- read.csv("/Users/benjaminslates/Documents/Past Classes/BUDA 451/BUDA451_Final/spam.csv")
+```
+
+
+I'll be using 10 fold cross validation to train my models on a test set of 500 observations from the spam data to measure prediction accuracy. 
+
+```{r}
+spam$spam=as.factor(spam$spam)
+fitControl <- trainControl(method = "cv", number = 10)
+set.seed(100)
+training<-createDataPartition(spam$spam,p=.1086)$Resample1
+new_c_train<-spam[training,]
+```
+
+
+Due to the binary nature of the data I'll be choosing to use the random forest, rpart, and GLM methods within the caret package to find the most accurate model for each of these methods. I'll train all of the models on new_c_train and then compare their accuracy by having them predict on the holdout set.
+
+The first model Ill run will be with the random forest method. For each of the first 3 models I'll use spam as the response with all other variables as the predictors. I'll predict on accuracy as I'll do with all the models and set mtry= 10:20 due to the large amount of predictors.
+
+```{r}
+modRF<-train(spam~.-spam,data=new_c_train,method="rf",trControl=fitControl,family="binomial",metric="Accuracy", tuneGrid=expand.grid(mtry=10:20))
+confusionMatrix(modRF)
+```
+
+
+The random forest model predicted fairly well with a 91.2% accuracy rate. The Final model was composed of 500 trees with 10 variables tried at each split resulted in 4.4% of the predictions being false negatives and 4.4% being false positives. Looking at the variable importance chart I though it was interesting to note that the model found capital_run_length_average to be the most important variable with char_exclaim and capital_run_length_longest to be close 2nd and 3rd.
+
+Now I'll repeat the same process and see how the prediction results differ when using a generalized linear model.
+
+```{r include=FALSE}
+modGLM<-train(spam~.-spam,data=new_c_train,method="glmStepAIC",trControl=fitControl,family="binomial",metric="Accuracy")
+```
+
+```{r}
+
+confusionMatrix(modGLM)
+
+```
+
+
+The GLM predicted slightly worse than the random forest with an average accuracy of 89.2%. Looking at the summary of the final model we can see that it had differing results on what variables it found to be most important compared to the random forest. Word_free, word_hp, and char_dollar were the most significant with char_exclaim being the only significant variable of top three most important variables from modRF.
+
+Looking at the confusion matrix its shown that it incorrectly predicted 5.8% false negatives and 5% false positives have greater error on both sides compared to the random forest.
+
+For the 3rd and final model I'll use recursive partitioning with the rpart2.
+
+```{r include = FALSE}
+modRP<-train(spam~.-spam,data=new_c_train,method="rpart2",trControl=fitControl, tuneGrid=expand.grid(maxdepth=15:30))
+confusionMatrix(modRP)
+
+```
+
+```{r}
+
+confusionMatrix(modRP)
+
+```
+
+After running the model with various different max depths I've found that a maxdepth = 15:30 seems to result in the highest accuracy, but it still comes in as by far the least accurate of the 3 models at 84.6%. It resulted in 6.0 false negatives and 9.4% false positives.
+
+
+Predictions for the losing models on the holdout sample
+
+```{r}
+
+confusionMatrix(predict(modGLM,spam[-training,]),spam$spam[-training])
+confusionMatrix(predict(modRP,spam[-training,]),spam$spam[-training])
+
+```
+
+Prediction for the winning model on the holdout sample
+
+```{r}
+confusionMatrix(predict(modRF,spam[-training,]),spam$spam[-training])
+
+```
+
+
+When trying to develop a model to detect spam emails I think it's more important to minimize the false positive rate because we don't want legitimate, possibly important emails being flagged as spam and disregarded. Due to this I'm choosing modRF as the winning model for my spam filter because of the fact that it has both the lowest false positive rate and highest accuracy all around. 
